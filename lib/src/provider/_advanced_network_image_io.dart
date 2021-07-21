@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui show Codec, hashValues;
 
-import 'package:async/async.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:retry/retry.dart';
@@ -14,13 +14,17 @@ import 'image_provider.dart' as image_provider;
 class AdvancedNetworkImage
     extends ImageProvider<image_provider.AdvancedNetworkImage>
     implements image_provider.AdvancedNetworkImage {
+  static final _defaultHttpClient = Dio();
+
   AdvancedNetworkImage(
     this.url, {
     this.scale = 1.0,
     this.headers,
     this.retryOptions = const RetryOptions(maxAttempts: 5),
     CacheManager? cacheManager,
-  }) : this.cacheManager = cacheManager ?? CacheManager();
+    Dio? dio,
+  })  : this.cacheManager = cacheManager ?? CacheManager(),
+        this._httpClient = dio ?? _defaultHttpClient;
 
   final CacheManager cacheManager;
 
@@ -35,9 +39,11 @@ class AdvancedNetworkImage
   @override
   final Map<String, String>? headers;
 
-  CancelableOperation<HttpClientResponse>? _imageFuture;
-
   bool _cancelled = false;
+
+  Dio _httpClient;
+
+  final _cancelToken = CancelToken();
 
   @override
   Future<AdvancedNetworkImage> obtainKey(ImageConfiguration configuration) {
@@ -67,23 +73,10 @@ class AdvancedNetworkImage
     );
   }
 
-  static final HttpClient _sharedHttpClient = HttpClient()
-    ..autoUncompress = false;
-
-  static HttpClient get _httpClient {
-    HttpClient client = _sharedHttpClient;
-    assert(() {
-      if (debugNetworkImageHttpClientProvider != null)
-        client = debugNetworkImageHttpClientProvider!();
-      return true;
-    }());
-    return client;
-  }
-
   @override
-  Future<void> cancel() async {
+  void cancel() {
     _cancelled = true;
-    await _imageFuture?.cancel();
+    _cancelToken.cancel();
   }
 
   Future<ui.Codec> _loadAsync(
@@ -103,41 +96,26 @@ class AdvancedNetworkImage
 
       final Uri resolved = Uri.base.resolve(key.url);
 
-      final loadImage = () async {
-        final HttpClientRequest request = await _httpClient.getUrl(resolved);
-
-        headers?.forEach((String name, String value) {
-          request.headers.add(name, value);
-        });
-
-        return request.close();
-      };
-
-      final imageFuture = CancelableOperation.fromFuture(
-          retryOptions?.retry(loadImage) ?? loadImage());
-
-      _imageFuture = imageFuture;
-
       if (_cancelled) {
         throw Exception('AdvancedNetworkImage operation cancelled');
       }
 
-      final HttpClientResponse response = await imageFuture.value;
+      Response<Uint8List> response = await _httpClient.getUri(resolved,
+          options: Options(headers: headers, responseType: ResponseType.bytes),
+          cancelToken: _cancelToken, onReceiveProgress: (int count, int total) {
+        chunkEvents.add(ImageChunkEvent(
+          cumulativeBytesLoaded: count,
+          expectedTotalBytes: total,
+        ));
+      });
 
-      if (response.statusCode != HttpStatus.ok) {
+      final bytes = response.data;
+
+      if (response.statusCode != HttpStatus.ok || bytes == null) {
         throw NetworkImageLoadException(
-            statusCode: response.statusCode, uri: resolved);
+            statusCode: response.statusCode ?? 0, uri: resolved);
       }
 
-      final Uint8List bytes = await consolidateHttpClientResponseBytes(
-        response,
-        onBytesReceived: (int cumulative, int? total) {
-          chunkEvents.add(ImageChunkEvent(
-            cumulativeBytesLoaded: cumulative,
-            expectedTotalBytes: total,
-          ));
-        },
-      );
       if (bytes.lengthInBytes == 0)
         throw Exception('AdvancedNetworkImage is an empty file: $resolved');
 

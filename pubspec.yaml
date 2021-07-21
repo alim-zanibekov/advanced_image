@@ -12,7 +12,7 @@ dependencies:
   path_provider: ^2.0.1
   archive: ^3.1.2
   retry: ^3.1.0
-  async: ^2.5.0
+  dio: ^4.0.0
   flutter:
     sdk: flutter
 

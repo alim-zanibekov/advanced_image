@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:retry/retry.dart';
 
@@ -13,12 +14,14 @@ abstract class AdvancedNetworkImage
   /// Creates an object that fetches the image at the given URL.
   ///
   /// The arguments [url] and [scale] must not be null.
-  factory AdvancedNetworkImage(String url,
-          {double scale,
-          Map<String, String>? headers,
-          RetryOptions? retryOptions,
-          CacheManager? cacheManager}) =
-      advanced_network_image.AdvancedNetworkImage;
+  factory AdvancedNetworkImage(
+    String url, {
+    double scale,
+    Map<String, String>? headers,
+    RetryOptions? retryOptions,
+    CacheManager? cacheManager,
+    Dio? dio,
+  }) = advanced_network_image.AdvancedNetworkImage;
 
   /// The URL from which the image will be fetched.
   String get url;
@@ -27,7 +30,7 @@ abstract class AdvancedNetworkImage
   double get scale;
 
   /// Stop loading image.
-  Future<void> cancel();
+  void cancel();
 
   /// The HTTP headers that will be used with [HttpClient.get] to fetch image from network.
   ///

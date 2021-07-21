@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:async/async.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:retry/retry.dart';
@@ -9,16 +11,23 @@ import 'package:retry/retry.dart';
 import '../cache.dart';
 import 'image_provider.dart' as image_provider;
 
+const isCanvasKit =
+    const bool.fromEnvironment('FLUTTER_WEB_USE_SKIA', defaultValue: false);
+
 class AdvancedNetworkImage
     extends ImageProvider<image_provider.AdvancedNetworkImage>
     implements image_provider.AdvancedNetworkImage {
+  static final _defaultHttpClient = Dio();
+
   AdvancedNetworkImage(
     this.url, {
     this.scale = 1.0,
     this.headers,
     CacheManager? cacheManager,
     RetryOptions? retryOptions,
-  }) : this.cacheManager = cacheManager ?? CacheManager();
+    Dio? dio,
+  })  : this.cacheManager = cacheManager ?? CacheManager(),
+        this._httpClient = dio ?? _defaultHttpClient;
 
   final CacheManager cacheManager;
 
@@ -31,14 +40,16 @@ class AdvancedNetworkImage
   @override
   final Map<String, String>? headers;
 
-  CancelableOperation<ui.Codec>? _imageFuture;
+  Dio _httpClient;
+
+  final _cancelToken = CancelToken();
 
   bool _cancelled = false;
 
   @override
   Future<void> cancel() async {
     _cancelled = true;
-    await _imageFuture?.cancel();
+    _cancelToken.cancel();
   }
 
   @override
@@ -81,7 +92,7 @@ class AdvancedNetworkImage
   }
 
   Future<ui.Codec> _loadAsync(AdvancedNetworkImage key, DecoderCallback decode,
-      StreamController<ImageChunkEvent> chunkEvents) {
+      StreamController<ImageChunkEvent> chunkEvents) async {
     assert(key == this);
 
     final Uri resolved = Uri.base.resolve(key.url);
@@ -89,18 +100,38 @@ class AdvancedNetworkImage
       throw Exception('AdvancedNetworkImage operation cancelled');
     }
 
-    final result = CancelableOperation.fromFuture(
-      ui.webOnlyInstantiateImageCodecFromUrl(
-          // ignore: undefined_function
-          resolved, chunkCallback: (int bytes, int total) {
+    if (isCanvasKit) {
+      Response<Uint8List> response = await _httpClient.getUri(resolved,
+          options: Options(headers: headers, responseType: ResponseType.bytes),
+          cancelToken: _cancelToken, onReceiveProgress: (int count, int total) {
         chunkEvents.add(ImageChunkEvent(
-            cumulativeBytesLoaded: bytes, expectedTotalBytes: total));
-      }) as Future<ui.Codec>, // ignore: undefined_function
-    );
+          cumulativeBytesLoaded: count,
+          expectedTotalBytes: total,
+        ));
+      });
+      final bytes = response.data;
 
-    _imageFuture = result;
+      if (response.statusCode != HttpStatus.ok || bytes == null) {
+        throw NetworkImageLoadException(
+            statusCode: response.statusCode ?? 0, uri: resolved);
+      }
 
-    return result.value; // ignore: undefined_function
+      if (bytes.lengthInBytes == 0)
+        throw Exception('AdvancedNetworkImage is an empty file: $resolved');
+
+      return ui.instantiateImageCodec(bytes);
+    } else {
+      final result = ui.webOnlyInstantiateImageCodecFromUrl(// ignore: undefined_function
+        resolved,
+        chunkCallback: (int bytes, int total) {
+          chunkEvents.add(ImageChunkEvent(
+            cumulativeBytesLoaded: bytes,
+            expectedTotalBytes: total,
+          ));
+        },
+      );
+      return result;
+    }
   }
 
   @override
