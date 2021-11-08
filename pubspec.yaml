@@ -1,7 +1,6 @@
 name: advanced_image
 description: Flutter network image provider with caching and retry support
 version: 0.0.5
-author: Alim Zanibekov
 homepage: /
 
 environment:

@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/widgets.dart';
 
 import 'file_system/file_system.dart';
 import 'file_system/file_system_disk.dart';
@@ -62,12 +61,16 @@ class CacheConfig {
 }
 
 class CacheManager {
-  CacheManager({CacheConfig? config}) : this.config = config ?? CacheConfig();
+  CacheManager({CacheConfig? config}) : this.config = config ?? CacheConfig() {
+    _ready = _loadMetadata();
+  }
 
   final CacheConfig config;
 
   final _metadata = Map<String, CacheElement>();
   final _printErrors = true;
+
+  late Future _ready;
 
   Future _dumpMetadata() async {
     _filterMetadata();
@@ -75,19 +78,34 @@ class CacheManager {
     await file.writeAsString(jsonEncode(_metadata));
   }
 
+  Future _loadMetadata() async {
+    final file = await config.fileSystem.getFile('metadata.json');
+    if (await file.exists()) {
+      final metadata =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      metadata.forEach((key, value) {
+        _metadata[key] = CacheElement.fromJson(value);
+      });
+    }
+  }
+
   Future _filterMetadata() async {
     final toDelete = _metadata.entries
         .where((it) => it.value.expiredAt.isBefore(DateTime.now()));
     final futures = toDelete.map((e) async {
-      final file = await config.fileSystem.getFile(e.value.id);
-      file.delete();
+      try {
+        final file = await config.fileSystem.getFile(e.value.id);
+        file.delete();
+      } catch (e) {
+        if (_printErrors) print(e);
+      }
       _metadata.remove(e.key);
     });
-    NetworkImage;
     await Future.wait(futures);
   }
 
   Future<Uint8List?> get(String id) async {
+    await _ready;
     try {
       final element = _metadata[id];
       if (element != null) {
@@ -103,6 +121,7 @@ class CacheManager {
   }
 
   Future<bool> has(String id) async {
+    await _ready;
     try {
       final element = _metadata[id];
       if (element != null) {
@@ -115,6 +134,7 @@ class CacheManager {
   }
 
   Future<bool> save(String id, Uint8List data) async {
+    await _ready;
     try {
       final file = await config.fileSystem.getFile(id);
       file.writeAsBytes(data);
@@ -136,6 +156,7 @@ class CacheManager {
   }
 
   Future<bool> evict(String id) async {
+    await _ready;
     try {
       final file = await config.fileSystem.getFile(id);
       file.delete();
