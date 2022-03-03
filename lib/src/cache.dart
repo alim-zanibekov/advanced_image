@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -118,6 +119,20 @@ class CacheManager {
     } catch (e) {
       if (_printErrors) print(e);
     }
+    return null;
+  }
+
+  Future<File?> getFile(String id) async {
+    await _ready;
+    try {
+      final element = _metadata[id];
+      if (element != null) {
+        return config.fileSystem.getFile(id);
+      }
+    } catch (e) {
+      if (_printErrors) print(e);
+    }
+    return null;
   }
 
   Future<bool> has(String id) async {
