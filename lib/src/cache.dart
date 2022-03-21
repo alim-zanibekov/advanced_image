@@ -96,7 +96,7 @@ class CacheManager {
     final futures = toDelete.map((e) async {
       try {
         final file = await config.fileSystem.getFile(e.value.id);
-        file.delete();
+        if (await file.exists()) file.delete();
       } catch (e) {
         if (_printErrors) print(e);
       }
@@ -174,7 +174,7 @@ class CacheManager {
     await _ready;
     try {
       final file = await config.fileSystem.getFile(id);
-      file.delete();
+      if (await file.exists()) file.delete();
       _metadata.remove(id);
       await _dumpMetadata();
 
