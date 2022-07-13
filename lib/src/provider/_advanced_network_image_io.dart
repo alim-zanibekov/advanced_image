@@ -123,7 +123,7 @@ class AdvancedNetworkImage
       return decode(bytes);
     } catch (e) {
       scheduleMicrotask(() {
-        PaintingBinding.instance!.imageCache!.evict(key);
+        PaintingBinding.instance.imageCache.evict(key);
       });
       rethrow;
     } finally {
