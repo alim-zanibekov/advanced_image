@@ -4,7 +4,7 @@ Flutter network image provider with caching and retry support
 
 ## Example
 
-```
+```dart
 import 'package:advanced_image/provider.dart';
 import 'package:flutter/material.dart';
 
