@@ -1,17 +1,16 @@
 name: advanced_image
 description: Flutter network image provider with caching and retry support
 version: 0.0.6
-homepage: /
 
 environment:
   sdk: ">=2.12.0 <3.0.0"
   flutter: ">=1.20.0"
 
 dependencies:
-  path_provider: ^2.0.11
-  archive: ^3.3.0
-  retry: ^3.1.0
-  dio: ^4.0.6
+  path_provider: ^2.0.14
+  archive: ^3.3.6
+  retry: ^3.1.1
+  dio: ^5.1.1
   flutter:
     sdk: flutter
 
